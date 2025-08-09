@@ -91,7 +91,7 @@ function App() {
       return;
     }
 
-    console.log(`Connecting to ${WEBSOCKET_API_URL}...`);
+    console.log(`Connecting to  the ${WEBSOCKET_API_URL}...`);
     setConnectionStatus(`Connecting...`);
     
     websocket.current = new WebSocket(WEBSOCKET_API_URL);
