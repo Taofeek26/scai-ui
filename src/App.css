@@ -216,6 +216,8 @@
   background: white;
   border-left: 3px solid #4a90e2;
   border-radius: 3px;
+  color: #333;  /* Added text color */
+  font-size: 14px;
   animation: fadeIn 0.3s ease-out;
 }
 
