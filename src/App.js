@@ -26,6 +26,7 @@ function App() {
   // NEW: State for handling the final page update process
   const [isUpdatingPage, setIsUpdatingPage] = useState(false);
   const [updateResult, setUpdateResult] = useState(null); // Will hold { message, updated_page_url } or an error
+  const [isProcessing, setIsProcessing] = useState(false); // Track overall process state
 
   const websocket = useRef(null);
 
@@ -70,11 +71,13 @@ function App() {
           
           // On success, store the successful result
           setUpdateResult({ success: true, data: resultData });
+          setIsProcessing(false); // Process complete
 
       } catch (error) {
           console.error('Failed to update page:', error);
           // On failure, store the error message
           setUpdateResult({ success: false, message: error.message });
+          setIsProcessing(false); // Process complete even on error
       } finally {
           setIsUpdatingPage(false);
       }
@@ -113,6 +116,7 @@ function App() {
       setConnectionStatus('Disconnected');
       setIsBotTyping(false);
       setIsUpdatingPage(false); // NEW: Ensure loading state is off on disconnect
+      setIsProcessing(false); // Reset processing state
     };
 
     websocket.current.onerror = (error) => {
@@ -121,6 +125,7 @@ function App() {
       setConnectionStatus('Connection Error');
       setIsBotTyping(false);
       setIsUpdatingPage(false); // NEW: Ensure loading state is off on error
+      setIsProcessing(false); // Reset processing state
     };
 
     websocket.current.onmessage = (event) => {
@@ -197,7 +202,7 @@ function App() {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (!userInput.trim() || !isConnected || isBotTyping) return;
+    if (!userInput.trim() || !isConnected || isBotTyping || isProcessing) return;
 
     const messagePayload = {
       action: 'sendMessage',
@@ -209,9 +214,11 @@ function App() {
     console.log('Sending message:', messagePayload);
     websocket.current.send(JSON.stringify(messagePayload));
 
-    // Clear progress updates and previous results for new request
+    // Clear ALL previous state for new request
     setProgressUpdates([]);
     setUpdateResult(null);
+    setIsUpdatingPage(false);
+    setIsProcessing(true); // Start processing
     
     setChatMessages(prev => [
       ...prev,
@@ -281,13 +288,18 @@ function App() {
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               placeholder="Type your message..."
-              disabled={isBotTyping}
+              disabled={isBotTyping || isProcessing}
             />
-            <button type="submit" disabled={isBotTyping}>Send</button>
+            <button type="submit" disabled={isBotTyping || isProcessing}>
+              {isProcessing ? 'Processing...' : 'Send'}
+            </button>
           </form>
 
           <div className="progress-area">
-            <h3>Backend Process Log</h3>
+            <h3>
+              Backend Process Log 
+              {isProcessing && <span style={{fontSize: '14px', marginLeft: '10px'}}>🔄 Active</span>}
+            </h3>
             <ul>
               {progressUpdates.map((update, index) => (
                 <li key={index}>{update}</li>
@@ -297,10 +309,15 @@ function App() {
           
           {/* NEW: Final Result Display Area */}
           <div className="update-result-area">
-              {isUpdatingPage && <p>Updating WordPress page, please wait...</p>}
+              {isProcessing && !updateResult && (
+                <div className="loading">
+                  <p>⏳ Processing your request...</p>
+                  {isUpdatingPage && <p>Updating WordPress {contentType}...</p>}
+                </div>
+              )}
               {updateResult && updateResult.success && (
                 <div className="success">
-                  <p>{updateResult.data.message}</p>
+                  <p>✅ {updateResult.data.message}</p>
                   <p>
                     View your updated {contentType} here: {' '}
                     <a href={updateResult.data.updated_page_url} target="_blank" rel="noopener noreferrer">
@@ -311,7 +328,7 @@ function App() {
               )}
               {updateResult && !updateResult.success && (
                   <div className="error">
-                      <p><strong>Page update failed:</strong> {updateResult.message}</p>
+                      <p><strong>❌ Page update failed:</strong> {updateResult.message}</p>
                   </div>
               )}
           </div>
