@@ -42,11 +42,102 @@ function App() {
   
   // NEW: Function to handle the final POST request to update the page
   // Defined before handleConnect to avoid dependency issues
+  const pollTaskStatus = useCallback(async (taskId) => {
+      console.log(`Polling status for task: ${taskId}`);
+      // Construct the status URL properly
+      const baseUrl = PAGE_UPDATE_API_URL.endsWith('/update-page') 
+          ? PAGE_UPDATE_API_URL.slice(0, -12) // Remove '/update-page'
+          : PAGE_UPDATE_API_URL;
+      const statusUrl = `${baseUrl}/task/${taskId}`;
+      console.log('Status URL:', statusUrl);
+      
+      const maxAttempts = 60; // Poll for up to 5 minutes (60 * 5 seconds)
+      let attempts = 0;
+      let previousProgressCount = 0;
+      
+      const pollInterval = setInterval(async () => {
+          attempts++;
+          
+          try {
+              const response = await fetch(statusUrl, {
+                  method: 'GET',
+                  headers: { 
+                      'Accept': 'application/json'
+                  }
+              });
+              
+              if (response.ok) {
+                  const taskData = await response.json();
+                  console.log('Task status:', taskData);
+                  
+                  // Update progress messages - only add new ones
+                  if (taskData.progress && taskData.progress.length > previousProgressCount) {
+                      const newMessages = taskData.progress.slice(previousProgressCount);
+                      newMessages.forEach(progressItem => {
+                          setProgressUpdates(prev => [...prev, `${progressItem.message}`]);
+                      });
+                      previousProgressCount = taskData.progress.length;
+                  }
+                  
+                  // Check if task is complete
+                  if (taskData.status === 'completed') {
+                      clearInterval(pollInterval);
+                      setIsUpdatingPage(false);
+                      setIsProcessing(false);
+                      
+                      if (taskData.result) {
+                          setUpdateResult({ success: true, data: taskData.result });
+                          setProgressUpdates(prev => [...prev, `✅ ${taskData.result.message || 'Update completed successfully'}`]);
+                          
+                          // Log the final URL for debugging
+                          if (taskData.result.updated_page_url) {
+                              console.log('Final URL:', taskData.result.updated_page_url);
+                          }
+                      }
+                  } else if (taskData.status === 'failed') {
+                      clearInterval(pollInterval);
+                      setIsUpdatingPage(false);
+                      setIsProcessing(false);
+                      
+                      setUpdateResult({ 
+                          success: false, 
+                          message: taskData.error || 'Update failed'
+                      });
+                      setProgressUpdates(prev => [...prev, `❌ Error: ${taskData.error || 'Update failed'}`]);
+                  }
+              } else {
+                  console.error('Failed to get task status:', response.status, response.statusText);
+                  if (response.status === 404) {
+                      setProgressUpdates(prev => [...prev, '⚠️ Task not found. It may have expired.']);
+                      clearInterval(pollInterval);
+                      setIsUpdatingPage(false);
+                      setIsProcessing(false);
+                  }
+              }
+          } catch (error) {
+              console.error('Error polling task status:', error);
+              // Continue polling on network errors
+          }
+          
+          // Stop polling after max attempts
+          if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              setIsUpdatingPage(false);
+              setIsProcessing(false);
+              setUpdateResult({ 
+                  success: false, 
+                  message: 'Update timed out. Please check WordPress directly.'
+              });
+              setProgressUpdates(prev => [...prev, '⏱️ Update timed out after 5 minutes']);
+          }
+      }, 5000); // Poll every 5 seconds
+  }, []);
+
   const triggerPageUpdate = useCallback(async () => {
       console.log("Starting page update process...");
       setIsUpdatingPage(true);
       setUpdateResult(null);
-      setProgressUpdates(prev => [...prev, `Finalizing... sending update request to WordPress ${contentType}.`]);
+      setProgressUpdates(prev => [...prev, `Initiating WordPress ${contentType} update...`]);
 
       const payload = {
           preview_id: previewId,
@@ -56,32 +147,96 @@ function App() {
       };
 
       try {
+          console.log('API URL:', PAGE_UPDATE_API_URL);
+          console.log('Sending update request with payload:', payload);
+          
+          // Try OPTIONS first to check CORS
+          try {
+              const optionsResponse = await fetch(PAGE_UPDATE_API_URL, {
+                  method: 'OPTIONS',
+                  headers: {
+                      'Origin': window.location.origin,
+                      'Access-Control-Request-Method': 'POST',
+                      'Access-Control-Request-Headers': 'Content-Type'
+                  }
+              });
+              console.log('OPTIONS response:', optionsResponse.status, optionsResponse.statusText);
+          } catch (optionsError) {
+              console.warn('OPTIONS request failed (this is normal if CORS is handled by browser):', optionsError);
+          }
+          
           const response = await fetch(PAGE_UPDATE_API_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              mode: 'cors', // Explicitly set CORS mode
+              credentials: 'omit', // Don't send cookies
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json'
+              },
               body: JSON.stringify(payload)
           });
 
-          const resultData = await response.json();
+          console.log('Response status:', response.status);
+          console.log('Response headers:', response.headers);
+          
+          let resultData;
+          try {
+              resultData = await response.json();
+              console.log('Response data:', resultData);
+          } catch (jsonError) {
+              console.error('Failed to parse response as JSON:', jsonError);
+              throw new Error('Invalid response format from server');
+          }
 
           if (!response.ok) {
               // Handle HTTP errors like 500, 400 etc.
               throw new Error(resultData.error || `Server responded with ${response.status}`);
           }
           
-          // On success, store the successful result
-          setUpdateResult({ success: true, data: resultData });
-          setIsProcessing(false); // Process complete
+          // Check if this is an async task response
+          if (response.status === 202 && resultData.taskId) {
+              // Task queued successfully, start polling
+              setProgressUpdates(prev => [...prev, 
+                  `✅ Update task created: ${resultData.taskId}`,
+                  'Processing update in background...'
+              ]);
+              
+              // Start polling for task status
+              pollTaskStatus(resultData.taskId);
+          } else {
+              // Legacy synchronous response (shouldn't happen with new architecture)
+              setUpdateResult({ success: true, data: resultData });
+              setIsProcessing(false);
+              setProgressUpdates(prev => [...prev, `✅ WordPress ${contentType} updated successfully!`]);
+          }
 
       } catch (error) {
           console.error('Failed to update page:', error);
-          // On failure, store the error message
-          setUpdateResult({ success: false, message: error.message });
+          
+          // Check if it's a CORS error
+          if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+              console.warn('CORS error detected. The update might have succeeded on the server.');
+              // Try to show a partial success message
+              setUpdateResult({ 
+                  success: false, 
+                  message: 'Unable to confirm update due to CORS. The update may have completed successfully. Please check your WordPress site.' 
+              });
+              setProgressUpdates(prev => [...prev, 
+                  `⚠️ CORS error - unable to confirm update status.`,
+                  `The WordPress update may have completed successfully.`,
+                  `Please check your WordPress site directly.`
+              ]);
+          } else {
+              // Other errors
+              setUpdateResult({ success: false, message: error.message });
+              setProgressUpdates(prev => [...prev, `❌ Error: ${error.message}`]);
+          }
+          
           setIsProcessing(false); // Process complete even on error
       } finally {
           setIsUpdatingPage(false);
       }
-  }, [previewId, pageSlug, contentType]);
+  }, [previewId, pageSlug, contentType, pollTaskStatus]);
 
   const handleConnect = useCallback(() => {
     // NEW: Validate both Preview ID and Content Slug
@@ -313,22 +468,42 @@ function App() {
                 <div className="loading">
                   <p>⏳ Processing your request...</p>
                   {isUpdatingPage && <p>Updating WordPress {contentType}...</p>}
+                  <div className="progress-spinner">
+                    <div className="spinner"></div>
+                    <span>Checking task status every 5 seconds...</span>
+                  </div>
                 </div>
               )}
-              {updateResult && updateResult.success && (
+              {updateResult && updateResult.success && updateResult.data && (
                 <div className="success">
-                  <p>✅ {updateResult.data.message}</p>
-                  <p>
-                    View your updated {contentType} here: {' '}
-                    <a href={updateResult.data.updated_page_url} target="_blank" rel="noopener noreferrer">
-                      {updateResult.data.updated_page_url}
-                    </a>
-                  </p>
+                  <h3>🎉 Update Completed Successfully!</h3>
+                  <p>{updateResult.data.message || `${contentType.charAt(0).toUpperCase() + contentType.slice(1)} updated successfully`}</p>
+                  {updateResult.data.updated_page_url && (
+                    <div className="final-url">
+                      <p><strong>Your updated {contentType} is live at:</strong></p>
+                      <a 
+                        href={updateResult.data.updated_page_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="url-link"
+                      >
+                        {updateResult.data.updated_page_url}
+                      </a>
+                      <button 
+                        onClick={() => window.open(updateResult.data.updated_page_url, '_blank')}
+                        className="view-button"
+                      >
+                        View {contentType.charAt(0).toUpperCase() + contentType.slice(1)} →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {updateResult && !updateResult.success && (
                   <div className="error">
-                      <p><strong>❌ Page update failed:</strong> {updateResult.message}</p>
+                      <h3>❌ Update Failed</h3>
+                      <p>{updateResult.message}</p>
+                      <p className="error-help">Please check your WordPress admin panel or try again.</p>
                   </div>
               )}
           </div>
