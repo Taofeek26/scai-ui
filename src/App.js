@@ -209,6 +209,10 @@ function App() {
     console.log('Sending message:', messagePayload);
     websocket.current.send(JSON.stringify(messagePayload));
 
+    // Clear progress updates and previous results for new request
+    setProgressUpdates([]);
+    setUpdateResult(null);
+    
     setChatMessages(prev => [
       ...prev,
       { sender: 'user', text: userInput },
@@ -222,7 +226,7 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>SCAI Chat & Page/Post Update Interface</h1>
+        <h1>SCAI QA Chat & Page/Post Update Interface</h1>
         <div className="connection-area">
           <input
             type="text"
