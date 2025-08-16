@@ -197,11 +197,24 @@ body {
   overflow-y: auto;
   padding: 20px;
   background: #0d1f17;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chat-messages-inner {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
 }
 
 .message {
   margin-bottom: 15px;
   animation: slideIn 0.3s ease;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes slideIn {
@@ -238,14 +251,22 @@ body {
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.5;
-  max-width: 80%;
+  max-width: 70%;
+  word-wrap: break-word;
+}
+
+.message.user {
+  align-items: flex-end;
 }
 
 .message.user .message-content {
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   color: white;
-  margin-left: auto;
   border-bottom-right-radius: 4px;
+}
+
+.message.bot {
+  align-items: flex-start;
 }
 
 .message.bot .message-content {

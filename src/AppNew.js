@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './AppNew.css';
+import ConfirmationDialog from './ConfirmationDialog';
 
 // --- CONFIGURATION ---
 const WEBSOCKET_API_URL = process.env.REACT_APP_WEBSOCKET_URL || 'wss://x78a3l7kod.execute-api.us-east-1.amazonaws.com/prod';
@@ -36,6 +37,10 @@ function AppNew() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  
+  // Confirmation dialog state
+  const [confirmationData, setConfirmationData] = useState(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   
   const websocket = useRef(null);
   const messageEndRef = useRef(null);
@@ -429,6 +434,35 @@ function AppNew() {
             addProgress(`📢 State updated on backend`);
             break;
 
+          case 'action_confirmation':
+            // Handle confirmation request from backend
+            console.log('Received confirmation request:', data);
+            setConfirmationData({
+              confirmation_id: data.confirmation_id,
+              action: data.action,
+              widgets: data.widgets || [],
+              total_count: data.total_count || 0,
+              preview_message: data.preview_message,
+              user_message: data.user_message
+            });
+            setShowConfirmation(true);
+            setIsBotTyping(false);
+            addProgress(`⏸️ Waiting for your confirmation...`);
+            break;
+
+          case 'confirmation_result':
+            // Handle confirmation result
+            if (data.status === 'confirmed') {
+              addProgress(`✅ Action confirmed - executing changes...`);
+            } else if (data.status === 'cancelled') {
+              addProgress(`❌ Action cancelled`);
+            } else if (data.status === 'modified') {
+              addProgress(`✏️ Action modified - executing selected changes...`);
+            }
+            setShowConfirmation(false);
+            setConfirmationData(null);
+            break;
+
           default:
             console.log('Received message:', data.type);
         }
@@ -482,6 +516,79 @@ function AppNew() {
     addProgress(`💬 Processing: "${userInput.substring(0, 50)}..."`);
   };
 
+  // Confirmation dialog handlers
+  const handleConfirmAction = useCallback((confirmationId) => {
+    if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const confirmPayload = {
+      action: 'sendMessage',
+      projectId: TEST_PROJECT_ID,
+      previewId: previewIdRef.current || previewId,
+      content: JSON.stringify({
+        confirmation_type: 'action_confirmation',
+        confirmation_id: confirmationId,
+        confirmation_action: 'confirm'
+      })
+    };
+
+    console.log('Sending confirmation:', confirmPayload);
+    websocket.current.send(JSON.stringify(confirmPayload));
+    setShowConfirmation(false);
+    setIsProcessing(true);
+    addProgress(`✅ Confirmed - executing all changes...`);
+  }, [previewId]);
+
+  const handleCancelAction = useCallback((confirmationId) => {
+    if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const cancelPayload = {
+      action: 'sendMessage',
+      projectId: TEST_PROJECT_ID,
+      previewId: previewIdRef.current || previewId,
+      content: JSON.stringify({
+        confirmation_type: 'action_confirmation',
+        confirmation_id: confirmationId,
+        confirmation_action: 'cancel'
+      })
+    };
+
+    console.log('Sending cancellation:', cancelPayload);
+    websocket.current.send(JSON.stringify(cancelPayload));
+    setShowConfirmation(false);
+    addProgress(`❌ Action cancelled by user`);
+  }, [previewId]);
+
+  const handleModifyAction = useCallback((confirmationId, selectedWidgets) => {
+    if (!websocket.current || websocket.current.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket not connected');
+      return;
+    }
+
+    const modifyPayload = {
+      action: 'sendMessage',
+      projectId: TEST_PROJECT_ID,
+      previewId: previewIdRef.current || previewId,
+      content: JSON.stringify({
+        confirmation_type: 'action_confirmation',
+        confirmation_id: confirmationId,
+        confirmation_action: 'modify',
+        modified_widgets: selectedWidgets
+      })
+    };
+
+    console.log(`Sending modified action with ${selectedWidgets.length} widgets`);
+    websocket.current.send(JSON.stringify(modifyPayload));
+    setShowConfirmation(false);
+    setIsProcessing(true);
+    addProgress(`✏️ Executing modified action with ${selectedWidgets.length} widgets...`);
+  }, [previewId]);
+
   return (
     <div className="app-container">
       <div className="app-header">
@@ -529,24 +636,26 @@ function AppNew() {
           </div>
           
           <div className="chat-messages">
-            {chatMessages.map((msg, index) => (
-              <div key={index} className={`message ${msg.sender}`}>
-                <span className="message-label">{msg.sender === 'user' ? 'You' : 'AI'}</span>
-                <div className="message-content">{msg.text}</div>
-              </div>
-            ))}
-            {currentBotMessage && (
-              <div className="message bot">
-                <span className="message-label">AI</span>
-                <div className="message-content">{currentBotMessage}</div>
-              </div>
-            )}
-            {isBotTyping && !currentBotMessage && (
-              <div className="typing-indicator">
-                <span></span><span></span><span></span>
-              </div>
-            )}
-            <div ref={messageEndRef} />
+            <div className="chat-messages-inner">
+              {chatMessages.map((msg, index) => (
+                <div key={index} className={`message ${msg.sender}`}>
+                  <span className="message-label">{msg.sender === 'user' ? 'You' : 'AI'}</span>
+                  <div className="message-content">{msg.text}</div>
+                </div>
+              ))}
+              {currentBotMessage && (
+                <div className="message bot">
+                  <span className="message-label">AI</span>
+                  <div className="message-content">{currentBotMessage}</div>
+                </div>
+              )}
+              {isBotTyping && !currentBotMessage && (
+                <div className="typing-indicator">
+                  <span></span><span></span><span></span>
+                </div>
+              )}
+              <div ref={messageEndRef} />
+            </div>
           </div>
 
           <form onSubmit={handleSendMessage} className="chat-input-form">
@@ -660,6 +769,15 @@ function AppNew() {
           {/* Update result popup removed - now shows in progress log only */}
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        confirmationData={confirmationData}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
+        onModify={handleModifyAction}
+        isVisible={showConfirmation}
+      />
     </div>
   );
 }
