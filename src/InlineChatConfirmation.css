@@ -1,0 +1,41 @@
+.inline-confirmation {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-btn-inline,
+.cancel-btn-inline {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-btn-inline {
+  background: #4ade80;
+  color: #000;
+}
+
+.confirm-btn-inline:hover {
+  background: #22c55e;
+}
+
+.cancel-btn-inline {
+  background: #ef4444;
+  color: #fff;
+}
+
+.cancel-btn-inline:hover {
+  background: #dc2626;
+}
