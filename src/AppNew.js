@@ -422,11 +422,33 @@ function AppNew() {
                 setChatMessages(prev => [...prev, { sender: 'bot', text: currentBotMessage }]);
                 setCurrentBotMessage('');
               }
-              // Trigger page update - delay to ensure state is updated
-              setTimeout(() => {
-                console.log("About to trigger page update with preview ID:", previewId);
-                triggerPageUpdate();
-              }, 100);
+              // Check the status to determine if we should trigger page update
+              // Only trigger if status is 'completed' (actions were performed)
+              // Don't trigger for 'no_actions', 'error', or other statuses
+              if (data.status === 'completed') {
+                // Actions were completed, trigger WordPress update
+                setTimeout(() => {
+                  console.log("Actions completed, triggering page update with preview ID:", previewId);
+                  triggerPageUpdate();
+                }, 100);
+              } else if (data.status === 'no_actions') {
+                // No actions needed, just conversational response
+                console.log("No actions performed, conversation only");
+                setIsProcessing(false);
+                setPreviewLoading(false);
+                setCurrentPhase('idle');
+              } else if (data.status === 'awaiting_confirmation') {
+                // Waiting for user confirmation
+                console.log("Awaiting user confirmation");
+                setIsProcessing(false);
+                setPreviewLoading(false);
+              } else {
+                // Other status (error, etc.)
+                console.log(`Final status: ${data.status}, not triggering update`);
+                setIsProcessing(false);
+                setPreviewLoading(false);
+                setCurrentPhase('idle');
+              }
             }
             break;
             
