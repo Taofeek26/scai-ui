@@ -1,41 +1,59 @@
+/* Inline Chat Confirmation - Modern shadcn/ui inspired styles */
+
 .inline-confirmation {
-  margin-top: 12px;
-  padding: 12px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 8px;
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .confirmation-actions {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .confirm-btn-inline,
 .cancel-btn-inline {
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
   border: none;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .confirm-btn-inline {
-  background: #4ade80;
-  color: #000;
+  background: hsl(142 76% 36%);
+  color: white;
 }
 
 .confirm-btn-inline:hover {
-  background: #22c55e;
+  background: hsl(142 76% 30%);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .cancel-btn-inline {
-  background: #ef4444;
-  color: #fff;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .cancel-btn-inline:hover {
-  background: #dc2626;
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }

@@ -24,7 +24,7 @@ function ConfirmationDialog({
 
   const { 
     confirmation_id,
-    action,
+    // action,
     widgets = [],
     total_count = 0,
     preview_message,
